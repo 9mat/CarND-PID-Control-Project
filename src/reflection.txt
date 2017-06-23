@@ -9,3 +9,8 @@ I component reduces bias of the controls. As there is no obvious bias in the sim
 ## Tuning parameters
 
 I use twiddle to tune the parameters. I find it easier to tune P and D component first and I later, however in the submitted code I twiddle all three at the same time. To get the performance for a set of parameters, I run the simulations for 1000 "messages". I reset the simulator every time starting a new round fo twiddle. For more details, please refer to the code.
+
+
+## Video output
+
+https://youtu.be/tx3yQPNJGhs
