@@ -1,8 +1,11 @@
 #include <uWS/uWS.h>
 #include <iostream>
+#include <fstream>
 #include "json.hpp"
 #include "PID.h"
 #include <math.h>
+
+#define TO_TWIDDLE false
 
 // for convenience
 using json = nlohmann::json;
@@ -32,10 +35,21 @@ int main()
 {
   uWS::Hub h;
 
-  PID pid;
   // TODO: Initialize the pid variable.
+  PID pid_steer(0.08417, 0.005, 1.0);
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  // count the number of iterations of failure
+  // i.e. the car is outside of the road and does not move
+  int count_failure = 0;
+
+  // count the number of iterations so far in the current
+  // twiddle run
+  int count_twiddle = 0;
+
+  double throttle = 0.5;
+
+
+  h.onMessage([&pid_steer, &count_twiddle, &count_failure, &throttle](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -50,20 +64,42 @@ int main()
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
-          double steer_value;
-          /*
-          * TODO: Calcuate steering value here, remember the steering value is
-          * [-1, 1].
-          * NOTE: Feel free to play around with the throttle and speed. Maybe use
-          * another PID controller to control the speed!
-          */
+
+          // the car "fails" of it does not move and lies outside of the road
+          if(cte > 2.8 && speed < 5){
+            count_failure++;
+
+            // if the car fails for too long, restart the simulation
+            if(count_failure > 100){
+              std::cout<<"FAIL! RESET."<<std::endl;
+              std::string msg("42[\"reset\",{}]");
+              ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+            }
+          }
+          else{
+            count_failure = 0;
+          }
+
+          count_twiddle++;
+
+          // call PID twiddle once the iterations count hit the target
+          if(TO_TWIDDLE && count_twiddle >= 3000) {
+            pid_steer.twiddle();
+            count_twiddle = 0;
+            // std::string msg("42[\"reset\",{}]");
+            // ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          }
+
+          pid_steer.UpdateError(cte);
           
+          double steer_value = tanh(pid_steer.TotalError());
+
           // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          // std::cout <<": " << "angle: " << angle << "CTE: " << cte << " Steering Value: " << steer_value << " Speed: " << speed << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
